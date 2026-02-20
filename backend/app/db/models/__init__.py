@@ -11,8 +11,11 @@ When adding a new model:
 
 from app.db.models.base import Base
 from app.db.models.user import User
+from app.db.models.pipeline_execution import PipelineExecution
 
 __all__ = [
     "Base",
     "User",
+    "PipelineExecution",
 ]
+
