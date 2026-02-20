@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.0
     LLM_MAX_TOKENS: int = 4096
 
+    # ── Google Gemini ────────────────────────
+    GOOGLE_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # ── LangSmith Tracing ────────────────────
+    LANGSMITH_API_KEY: str = ""
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGSMITH_PROJECT: str = "fhpl-endorsements"
+    LANGSMITH_TRACING: bool = False
+
     # ── OCR ───────────────────────────────────
     OCR_PROVIDER: str = "tesseract"
     AWS_ACCESS_KEY_ID: str = ""
@@ -54,7 +64,7 @@ class Settings(BaseSettings):
     # ── SFTP Encryption ──────────────────────
     SFTP_CREDENTIAL_ENCRYPTION_KEY: str = ""
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ["../.env", ".env"], "extra": "ignore"}
 
 
 settings = Settings()

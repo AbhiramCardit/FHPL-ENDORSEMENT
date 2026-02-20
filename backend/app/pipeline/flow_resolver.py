@@ -36,6 +36,9 @@ from app.pipeline.steps.score_confidence import ScoreConfidenceStep
 from app.pipeline.steps.persist_records import PersistRecordsStep
 from app.pipeline.steps.api_request import APIRequestStep
 
+# ─── Import insurer-specific flows ────────────────────
+from app.pipeline.insurers.abhi.flow import abhi_flow
+
 logger = get_logger(__name__)
 
 
@@ -174,6 +177,8 @@ FLOW_REGISTRY: dict[str, callable] = {
     "DEFAULT": _default_flow,
     "INSURER_A": _example_insurer_a_flow,
     "INSURER_B": _example_insurer_b_flow,
+    # ─── Real insurers ────────────────────────────
+    "ABHI": abhi_flow,
 }
 
 
