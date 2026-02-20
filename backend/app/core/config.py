@@ -1,0 +1,60 @@
+"""
+Pydantic Settings — centralized configuration loaded from environment variables.
+"""
+
+from pydantic_settings import BaseSettings
+from pydantic import Field
+
+
+class Settings(BaseSettings):
+    # ── Database ──────────────────────────────
+    DATABASE_URL: str = "postgresql+asyncpg://endorsements_user:endorsements_pass@localhost:5432/endorsements_db"
+
+    # ── Redis / Celery ────────────────────────
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
+
+    # ── File Storage ──────────────────────────
+    STORAGE_ENDPOINT: str = "http://localhost:9000"
+    STORAGE_ACCESS_KEY: str = "minioadmin"
+    STORAGE_SECRET_KEY: str = "minioadmin"
+    STORAGE_BUCKET_NAME: str = "endorsements"
+
+    # ── LLM Provider ─────────────────────────
+    LLM_PROVIDER: str = "anthropic"
+    ANTHROPIC_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    LLM_MODEL: str = "claude-sonnet-4-20250514"
+    LLM_TEMPERATURE: float = 0.0
+    LLM_MAX_TOKENS: int = 4096
+
+    # ── OCR ───────────────────────────────────
+    OCR_PROVIDER: str = "tesseract"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "ap-south-1"
+
+    # ── TPA API ───────────────────────────────
+    TPA_API_BASE_URL: str = "https://api.tpa-provider.com/v2"
+    TPA_API_KEY: str = ""
+    TPA_REQUESTS_PER_MINUTE: int = 60
+
+    # ── Auth / JWT ────────────────────────────
+    JWT_SECRET_KEY: str = "change-this-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+
+    # ── Application ───────────────────────────
+    APP_ENV: str = "development"
+    MIN_CONFIDENCE_THRESHOLD: float = 0.80
+    MAX_SUBMISSION_RETRIES: int = 5
+    ALERT_EMAIL_TO: str = ""
+
+    # ── SFTP Encryption ──────────────────────
+    SFTP_CREDENTIAL_ENCRYPTION_KEY: str = ""
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+settings = Settings()

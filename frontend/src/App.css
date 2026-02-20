@@ -1,0 +1,70 @@
+/* ─── Layout ──────────────────────────────── */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ─── Sidebar ─────────────────────────────── */
+.sidebar {
+  width: 240px;
+  background: #1a1a2e;
+  color: #eee;
+  padding: 1.5rem 1rem;
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.nav-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.nav-link {
+  display: block;
+  padding: 0.65rem 1rem;
+  color: #adb5bd;
+  text-decoration: none;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  font-size: 0.95rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.nav-link.active {
+  background: #0f3460;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ─── Main Content ────────────────────────── */
+.main-content {
+  flex: 1;
+  padding: 2rem;
+  background: #f8f9fa;
+  overflow-y: auto;
+}
+
+.main-content h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #212529;
+  margin-bottom: 0.5rem;
+}
+
+.main-content p {
+  color: #6c757d;
+  font-size: 0.95rem;
+}
