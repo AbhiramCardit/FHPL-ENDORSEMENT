@@ -9,13 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
-from app.api.v1 import insurees, files, endorsements, submissions, review, reports
+from app.core.tracing import setup_tracing
+from app.api.v1 import insurees, files, endorsements, submissions, review, reports, pipeline
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown events."""
     setup_logging("DEBUG" if settings.APP_ENV == "development" else "INFO")
+    setup_tracing()
     logger = get_logger("startup")
     logger.info("Application starting", env=settings.APP_ENV)
     yield
@@ -46,6 +48,7 @@ app.include_router(endorsements.router, prefix=API_PREFIX)
 app.include_router(submissions.router, prefix=API_PREFIX)
 app.include_router(review.router, prefix=API_PREFIX)
 app.include_router(reports.router, prefix=API_PREFIX)
+app.include_router(pipeline.router, prefix=API_PREFIX)
 
 
 # ─── Health Check ─────────────────────────────

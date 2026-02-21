@@ -1,11 +1,19 @@
+# Dev stack — mirrors docker-compose.yml but uses dev container names.
+#
+# Usage:
+#   python manage.py up --dev --build
+#   OR
+#   docker compose -f docker-compose.dev.yml up -d --build
+
 services:
   # ─── PostgreSQL Database ────────────────────────────────
   postgres:
     build:
       context: ./database
       dockerfile: Dockerfile
+    container_name: endorsements-postgres-dev
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pg_dev_data:/var/lib/postgresql/data
     env_file:
       - .env
     ports:
@@ -20,10 +28,11 @@ services:
   # ─── Redis ─────────────────────────────────────────────
   redis:
     image: redis:7-alpine
+    container_name: endorsements-redis-dev
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - redis_dev_data:/data
     env_file:
       - .env
     healthcheck:
@@ -35,17 +44,18 @@ services:
   # ─── MinIO (S3-compatible storage) ─────────────────────
   minio:
     image: minio/minio:latest
+    container_name: endorsements-minio-dev
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio_data:/data
+      - minio_dev_data:/data
     environment:
       - MINIO_ROOT_USER=${STORAGE_ACCESS_KEY:-minioadmin}
       - MINIO_ROOT_PASSWORD=${STORAGE_SECRET_KEY:-minioadmin}
     command: server /data --console-address ":9001"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      test: [ "CMD", "mc", "ready", "local" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -55,6 +65,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: endorsements-backend-dev
     ports:
       - "8000:8000"
     volumes:
@@ -68,6 +79,7 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - STORAGE_ENDPOINT=http://minio:9000
+      - APP_ENV=development
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,7 +93,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A app.tasks worker --loglevel=info --concurrency=4
+    container_name: endorsements-celery-worker-dev
+    command: celery -A app.tasks worker --loglevel=info --concurrency=2 -Q pipeline,submissions,default
     volumes:
       - ./backend:/app
     env_file:
@@ -104,6 +117,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: endorsements-celery-beat-dev
     command: celery -A app.tasks beat --loglevel=info
     volumes:
       - ./backend:/app
@@ -121,11 +135,12 @@ services:
       postgres:
         condition: service_healthy
 
-  # ─── Frontend (React + Vite) ───────────────────────────
+  # ─── Frontend (React + Vite) ────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    container_name: endorsements-frontend-dev
     ports:
       - "5173:5173"
     volumes:
@@ -137,6 +152,6 @@ services:
       - backend
 
 volumes:
-  postgres_data:
-  redis_data:
-  minio_data:
+  pg_dev_data:
+  redis_dev_data:
+  minio_dev_data:

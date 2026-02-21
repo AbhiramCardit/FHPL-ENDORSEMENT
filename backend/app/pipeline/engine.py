@@ -166,7 +166,56 @@ class PipelineEngine:
             duration_ms=result.total_duration_ms,
         )
 
+        # ── Persist to DB (non-fatal) ─────────────────
+        await self._persist_to_db(ctx, result)
+
         return result
+
+    async def _persist_to_db(
+        self,
+        ctx: PipelineContext,
+        result,
+    ) -> None:
+        """Persist pipeline execution to database. Failures are logged, never raised."""
+        try:
+            from app.pipeline.db_persist import persist_pipeline_result
+
+            # Build file dicts from context
+            file_dicts = []
+            for fi in ctx.files:
+                file_dicts.append({
+                    "file_id": fi.file_id,
+                    "filename": fi.filename,
+                    "role": fi.role,
+                    "detected_format": fi.detected_format,
+                    "s3_key": fi.s3_key,
+                    "local_path": fi.local_path,
+                    "record_count": fi.record_count,
+                    "error": fi.error,
+                })
+
+            await persist_pipeline_result(
+                execution_id=ctx.execution_id,
+                status=result.status,
+                insurer_code=ctx.insuree_config.get("code", "UNKNOWN"),
+                insurer_name=ctx.insuree_config.get("name", ""),
+                config_snapshot=ctx.insuree_config,
+                started_at=result.started_at,
+                completed_at=result.completed_at,
+                duration_ms=result.total_duration_ms,
+                total_steps=result.total_steps,
+                steps_completed=result.steps_completed,
+                error_message=result.error,
+                step_results=result.step_results,
+                files=file_dicts,
+                extracted_by_role=ctx.raw_extracted_by_role,
+                context_summary=ctx.to_summary_dict(),
+            )
+        except Exception as exc:
+            self.logger.warning(
+                "DB persistence failed (non-fatal)",
+                error=str(exc),
+            )
 
     async def run_steps(
         self,
@@ -212,6 +261,9 @@ class PipelineEngine:
                     )
                     ctx.step_results.append(skip_result)
                     steps_completed += 1
+
+                    # Persist skipped step
+                    await self._persist_step(ctx, skip_result, step_number, steps_completed, len(steps))
                     continue
             except Exception as exc:
                 step_log.warning("should_skip raised, running step anyway", error=str(exc))
@@ -231,6 +283,8 @@ class PipelineEngine:
                     duration_ms=result.duration_ms,
                     metadata=result.metadata,
                 )
+                # Persist completed step
+                await self._persist_step(ctx, result, step_number, steps_completed, len(steps))
             else:
                 step_log.error(
                     "Step failed — pipeline stopping",
@@ -239,6 +293,9 @@ class PipelineEngine:
                 )
                 ctx.add_error(f"Step '{step.name}' failed: {result.error}")
                 pipeline_status = PipelineStatus.FAILED
+
+                # Persist failed step
+                await self._persist_step(ctx, result, step_number, steps_completed, len(steps))
 
                 # Attempt rollback
                 try:
@@ -267,6 +324,40 @@ class PipelineEngine:
             step_results=[sr.to_dict() for sr in ctx.step_results],
             context_summary=ctx.to_summary_dict(),
         )
+
+    async def _persist_step(
+        self,
+        ctx: PipelineContext,
+        step_result: StepResult,
+        step_number: int,
+        steps_completed: int,
+        total_steps: int,
+    ) -> None:
+        """Persist a single step result to DB. Non-fatal."""
+        try:
+            from app.pipeline.db_persist import persist_step_completed
+
+            await persist_step_completed(
+                run_id=ctx.execution_id,
+                step_index=step_number,
+                step_name=step_result.step_name,
+                step_description=getattr(step_result, "step_description", ""),
+                status=step_result.status,
+                started_at=step_result.started_at,
+                completed_at=step_result.completed_at,
+                duration_ms=step_result.duration_ms,
+                error_message=step_result.error,
+                metadata=step_result.metadata,
+                retry_count=getattr(step_result, "retry_count", 0),
+                steps_completed=steps_completed,
+                total_steps=total_steps,
+            )
+        except Exception as exc:
+            self.logger.warning(
+                "Step DB persist failed (non-fatal)",
+                step_name=step_result.step_name,
+                error=str(exc),
+            )
 
     async def _execute_with_retry(
         self,

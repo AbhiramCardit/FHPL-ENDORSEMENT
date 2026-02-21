@@ -114,11 +114,17 @@ class PipelineContext:
     # ─── Identity (set at init) ────────────────────────
     file_ingestion_id: str              # primary file ID (or batch ID)
     insuree_id: str
-    execution_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    execution_id: str = field(default=None)  # type: ignore[assignment]
 
     # ─── Insuree config (loaded by engine before first step) ──
     insuree_config: dict[str, Any] = field(default_factory=dict)
     insuree_code: str = ""
+
+    def __post_init__(self):
+        # Use file_ingestion_id as execution_id (matches the DB PipelineRun row)
+        # Fall back to generating a new UUID for demo/test scripts
+        if self.execution_id is None:
+            self.execution_id = self.file_ingestion_id or str(uuid.uuid4())
 
     # ─── Multi-file batch ─────────────────────────────
     # List of ALL files in this batch.  For single-file runs,

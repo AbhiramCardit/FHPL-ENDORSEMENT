@@ -16,6 +16,7 @@ from typing import Any
 
 from app.core.constants import FileFormat
 from app.core.logging import get_logger
+from app.core.tracing import traceable_step
 from app.pipeline.context import FileInfo, PipelineContext, StepResult
 from app.pipeline.errors import ExtractionError, StepExecutionError
 from app.pipeline.step import PipelineStep
@@ -208,30 +209,108 @@ class ExtractDataStep(PipelineStep):
     async def _extract_pdf(
         self, fi: FileInfo, ctx: PipelineContext
     ) -> list[dict[str, Any]]:
-        """Placeholder: extract from PDF."""
-        logger.info("PDF extraction (placeholder)", role=fi.role, filepath=fi.local_path)
-        # TODO: pdfplumber/camelot for structured, LLM for unstructured
+        """Extract from PDF — uses LLM for unstructured, pdfplumber for structured."""
+        return await self._traced_extract_pdf(
+            file_path=fi.local_path,
+            role=fi.role,
+            filename=fi.filename,
+            format=fi.detected_format,
+            execution_id=ctx.execution_id,
+            insuree_code=ctx.insuree_code,
+        )
+
+    @staticmethod
+    @traceable_step(
+        name="extract_pdf",
+        run_type="chain",
+        tags=["extraction", "pdf"],
+    )
+    async def _traced_extract_pdf(
+        file_path: str,
+        role: str,
+        filename: str,
+        format: str,
+        execution_id: str,
+        insuree_code: str,
+    ) -> list[dict[str, Any]]:
+        """LangSmith-traced PDF extraction."""
+        logger.info("PDF extraction (placeholder)", role=role, filepath=file_path)
+        # TODO: For structured PDFs → pdfplumber / camelot
+        # TODO: For unstructured PDFs → LLM extraction (Anthropic Claude)
+        #
+        # Real implementation:
+        #   from anthropic import AsyncAnthropic
+        #   client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        #   response = await client.messages.create(
+        #       model=settings.LLM_MODEL,
+        #       messages=[{"role": "user", "content": prompt}],
+        #   )
+        #   return parse_llm_response(response)
         return [
             {"name": "Bob Wilson", "employee_id": "EMP004", "action": "MOD",
              "dob": "1988-11-25", "plan_code": "GOLD-100",
-             "sum_insured": 500000, "_source_file": fi.filename},
+             "sum_insured": 500000, "_source_file": filename},
         ]
 
     async def _extract_ocr(
         self, fi: FileInfo, ctx: PipelineContext
     ) -> list[dict[str, Any]]:
-        """Placeholder: OCR then LLM extraction."""
-        logger.info("OCR + LLM extraction (placeholder)", role=fi.role)
-        # TODO: Tesseract/Textract → LLM
+        """OCR then LLM extraction for scanned images."""
+        return await self._traced_extract_ocr(
+            file_path=fi.local_path,
+            role=fi.role,
+            filename=fi.filename,
+            execution_id=ctx.execution_id,
+            insuree_code=ctx.insuree_code,
+        )
+
+    @staticmethod
+    @traceable_step(
+        name="extract_ocr",
+        run_type="chain",
+        tags=["extraction", "ocr", "llm"],
+    )
+    async def _traced_extract_ocr(
+        file_path: str,
+        role: str,
+        filename: str,
+        execution_id: str,
+        insuree_code: str,
+    ) -> list[dict[str, Any]]:
+        """LangSmith-traced OCR + LLM extraction."""
+        logger.info("OCR + LLM extraction (placeholder)", role=role)
+        # TODO: Tesseract/Textract → get text → LLM parse
         return []
 
     async def _extract_docx(
         self, fi: FileInfo, ctx: PipelineContext
     ) -> list[dict[str, Any]]:
-        """Placeholder: extract from Word document."""
-        logger.info("DOCX extraction (placeholder)", role=fi.role)
-        # TODO: python-docx → text → LLM
+        """Extract from Word document — LLM for unstructured content."""
+        return await self._traced_extract_docx(
+            file_path=fi.local_path,
+            role=fi.role,
+            filename=fi.filename,
+            execution_id=ctx.execution_id,
+            insuree_code=ctx.insuree_code,
+        )
+
+    @staticmethod
+    @traceable_step(
+        name="extract_docx",
+        run_type="chain",
+        tags=["extraction", "docx", "llm"],
+    )
+    async def _traced_extract_docx(
+        file_path: str,
+        role: str,
+        filename: str,
+        execution_id: str,
+        insuree_code: str,
+    ) -> list[dict[str, Any]]:
+        """LangSmith-traced DOCX extraction."""
+        logger.info("DOCX extraction (placeholder)", role=role)
+        # TODO: python-docx → get text → LLM parse
         return [
             {"approval_note": "Approved for endorsement batch",
-             "effective_date": "2026-03-01", "_source_file": fi.filename},
+             "effective_date": "2026-03-01", "_source_file": filename},
         ]

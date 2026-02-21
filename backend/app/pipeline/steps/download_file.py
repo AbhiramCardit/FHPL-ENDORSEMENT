@@ -113,17 +113,26 @@ class DownloadFileStep(PipelineStep):
         """
         Download a single file from S3/MinIO to local temp.
 
-        TODO: Replace with actual boto3/MinIO download:
-            s3_client = boto3.client("s3", endpoint_url=settings.STORAGE_ENDPOINT)
-            s3_key = file_info.s3_key or f"raw/{ctx.insuree_id}/{file_info.file_id}"
-            local_path = tempfile.mktemp(suffix=os.path.splitext(file_info.filename)[1])
-            s3_client.download_file(settings.STORAGE_BUCKET_NAME, s3_key, local_path)
+        If s3_key points to a local file that exists, uses it directly
+        (for local testing without S3).
         """
-        # Placeholder: set paths as if download succeeded
-        file_info.s3_key = (
+        s3_key = (
             file_info.s3_key
             or f"raw/{ctx.insuree_id}/{file_info.file_id}/{file_info.filename}"
         )
+        file_info.s3_key = s3_key
+
+        # ── Local file? Use directly ──────────────────
+        if os.path.isfile(s3_key):
+            file_info.local_path = s3_key
+            logger.info("Using local file directly", path=s3_key, role=file_info.role)
+            return
+
+        # ── Otherwise: placeholder (real S3 download TODO) ─
+        # TODO: Replace with actual boto3/MinIO download:
+        #   s3_client = boto3.client("s3", endpoint_url=settings.STORAGE_ENDPOINT)
+        #   local_path = tempfile.mktemp(suffix=os.path.splitext(file_info.filename)[1])
+        #   s3_client.download_file(settings.STORAGE_BUCKET_NAME, s3_key, local_path)
         file_info.local_path = (
             f"/tmp/pipeline/{ctx.execution_id}/{file_info.role}/{file_info.filename}"
         )

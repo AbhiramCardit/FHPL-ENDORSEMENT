@@ -18,6 +18,33 @@ from app.pipeline.flow_resolver import FlowResolver
 logger = structlog.get_logger("tasks.processing")
 
 
+def _update_run_status_sync(run_id: str, status: str):
+    """Update a PipelineRun's status using a blocking sync call (for Celery)."""
+    asyncio.run(_update_run_status(run_id, status))
+
+
+async def _update_run_status(run_id: str, status: str):
+    """Update PipelineRun status in the DB (fresh engine to avoid loop conflicts)."""
+    import uuid as uuid_mod
+    from sqlalchemy import update
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from app.core.config import settings
+    from app.db.models.pipeline_run import PipelineRun
+
+    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        async with factory() as session:
+            async with session.begin():
+                await session.execute(
+                    update(PipelineRun)
+                    .where(PipelineRun.id == uuid_mod.UUID(run_id))
+                    .values(status=status)
+                )
+    finally:
+        await engine.dispose()
+
+
 @celery_app.task(bind=True, name="app.tasks.processing_tasks.process_file")
 def process_file(
     self,
@@ -29,36 +56,24 @@ def process_file(
     """
     Process a downloaded file through the full pipeline.
 
-    Steps (handled by PipelineEngine):
-        1. Download file from S3/MinIO
-        2. Detect format (CSV, XLSX, PDF, etc.)
-        3. Run appropriate extractor
-        4. Map to canonical EndorsementRecord schema
-        5. Schema + business rule validation
-        6. Duplicate detection
-        7. Confidence scoring & routing
-        8. Persist records to DB & dispatch downstream tasks
-
-    Args:
-        file_ingestion_id: UUID of the FileIngestionRecord to process.
-        insuree_id: UUID of the insuree (optional, loaded from DB if absent).
-        insuree_config: Dict of insuree configuration (optional, loaded from DB).
+    file_ingestion_id is now the PipelineRun UUID (created by the trigger endpoint).
+    This task updates status: PENDING → RUNNING → COMPLETED/FAILED.
     """
     task_log = logger.bind(
         task_id=self.request.id,
-        file_ingestion_id=file_ingestion_id,
+        run_id=file_ingestion_id,
         insuree_id=insuree_id,
     )
 
-    task_log.info("Processing task started")
+    task_log.info("Processing task started, setting status to RUNNING")
+
+    # ── Mark as RUNNING ──────────────────────────
+    try:
+        _update_run_status_sync(file_ingestion_id, "RUNNING")
+    except Exception as exc:
+        task_log.warning("Failed to set RUNNING status (non-fatal)", error=str(exc))
 
     try:
-        # TODO: Load insuree_config from DB if not provided
-        #   async with async_session() as session:
-        #       file_record = await file_repo.get(session, file_ingestion_id)
-        #       config = await insuree_repo.get_config(session, file_record.insuree_id)
-        #       insuree_config = config.to_dict()
-
         if insuree_config is None:
             insuree_config = {
                 "code": "DEFAULT",
@@ -79,15 +94,6 @@ def process_file(
             )
         )
 
-        # TODO: Update FileIngestionRecord status in DB
-        #   async with async_session() as session:
-        #       await file_repo.update_status(
-        #           session, file_ingestion_id,
-        #           status="PROCESSED" if result.status == PipelineStatus.COMPLETED else "FAILED",
-        #           record_count=result.context_summary.get("records_canonical", 0),
-        #           error_message=result.error,
-        #       )
-
         task_log.info(
             "Processing task finished",
             pipeline_status=result.status,
@@ -105,5 +111,10 @@ def process_file(
         }
 
     except Exception as exc:
+        # Mark as FAILED if the task itself crashes
         task_log.exception("Processing task failed", error=str(exc))
+        try:
+            _update_run_status_sync(file_ingestion_id, "FAILED")
+        except Exception:
+            pass
         raise

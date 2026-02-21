@@ -7,8 +7,22 @@ from pydantic import Field
 
 
 class Settings(BaseSettings):
-    # ── Database ──────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://endorsements_user:endorsements_pass@localhost:5432/endorsements_db"
+    # ── Database (individual vars, like healthpay-ai) ──
+    POSTGRES_USER: str = "endorsements_user"
+    POSTGRES_PASSWORD: str = "endorsements_pass"
+    POSTGRES_SERVER: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "endorsements_db"
+
+    @property
+    def DATABASE_URL(self) -> str:
+        """Async URL for app runtime (asyncpg)."""
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+    @property
+    def DATABASE_URL_SYNC(self) -> str:
+        """Sync URL for Alembic migrations (psycopg2)."""
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # ── Redis / Celery ────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -28,6 +42,16 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "claude-sonnet-4-20250514"
     LLM_TEMPERATURE: float = 0.0
     LLM_MAX_TOKENS: int = 4096
+
+    # ── Google Gemini ────────────────────────
+    GOOGLE_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # ── LangSmith Tracing ────────────────────
+    LANGSMITH_API_KEY: str = ""
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGSMITH_PROJECT: str = "fhpl-endorsements"
+    LANGSMITH_TRACING: bool = False
 
     # ── OCR ───────────────────────────────────
     OCR_PROVIDER: str = "tesseract"
@@ -54,7 +78,7 @@ class Settings(BaseSettings):
     # ── SFTP Encryption ──────────────────────
     SFTP_CREDENTIAL_ENCRYPTION_KEY: str = ""
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ["../.env", ".env"], "extra": "ignore"}
 
 
 settings = Settings()
