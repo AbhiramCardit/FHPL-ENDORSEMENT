@@ -45,6 +45,79 @@ def _make_session():
     return factory, engine
 
 
+async def persist_step_completed(
+    run_id: str,
+    step_index: int,
+    step_name: str,
+    step_description: str,
+    status: str,
+    started_at,
+    completed_at,
+    duration_ms: int,
+    error_message: str | None = None,
+    metadata: dict | None = None,
+    retry_count: int = 0,
+    steps_completed: int = 0,
+    total_steps: int = 0,
+) -> None:
+    """
+    Persist a single step result + update run progress counter.
+    Called after each step completes (or fails/skips).
+    Non-fatal: failures are logged, never raised.
+    """
+    engine = None
+    try:
+        import uuid as uuid_mod
+        session_factory, engine = _make_session()
+
+        async with session_factory() as session:
+            async with session.begin():
+                # INSERT step log
+                step_log = PipelineStepLog(
+                    run_id=uuid_mod.UUID(run_id),
+                    step_index=step_index,
+                    step_name=step_name,
+                    step_description=step_description or "",
+                    status=status,
+                    started_at=_parse_dt(started_at),
+                    completed_at=_parse_dt(completed_at),
+                    duration_ms=duration_ms,
+                    error_message=error_message,
+                    metadata_=metadata or {},
+                    retry_count=retry_count,
+                )
+                session.add(step_log)
+
+                # UPDATE run progress
+                from sqlalchemy import update
+                await session.execute(
+                    update(PipelineRun)
+                    .where(PipelineRun.id == uuid_mod.UUID(run_id))
+                    .values(
+                        steps_completed=steps_completed,
+                        total_steps=total_steps,
+                    )
+                )
+
+        logger.info(
+            "Step persisted to DB",
+            run_id=run_id,
+            step_name=step_name,
+            status=status,
+            progress=f"{steps_completed}/{total_steps}",
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to persist step to DB (non-fatal)",
+            run_id=run_id,
+            step_name=step_name,
+            error=str(exc),
+        )
+    finally:
+        if engine:
+            await engine.dispose()
+
+
 async def persist_pipeline_result(
     execution_id: str,
     status: str,
@@ -120,22 +193,8 @@ async def persist_pipeline_result(
                     await session.flush()
                     run_id = run.id
 
-                # ── PipelineStepLogs ──────────────────────
-                for sr in step_results:
-                    step_log = PipelineStepLog(
-                        run_id=run_id,
-                        step_index=sr.get("step_index", 0),
-                        step_name=sr.get("step_name", "unknown"),
-                        step_description=sr.get("step_description", ""),
-                        status=sr.get("status", "UNKNOWN"),
-                        started_at=_parse_dt(sr.get("started_at")),
-                        completed_at=_parse_dt(sr.get("completed_at")),
-                        duration_ms=sr.get("duration_ms", 0),
-                        error_message=sr.get("error"),
-                        metadata_=sr.get("metadata", {}),
-                        retry_count=sr.get("retry_count", 0),
-                    )
-                    session.add(step_log)
+                # NOTE: PipelineStepLogs are persisted per-step by
+                # persist_step_completed() — no batch insert needed here.
 
                 # ── PipelineFiles ─────────────────────────
                 file_db_map = {}
