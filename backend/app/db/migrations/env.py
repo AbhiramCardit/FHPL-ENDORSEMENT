@@ -1,14 +1,14 @@
 """
 Alembic migration environment — reads DATABASE_URL from app settings.
+
+Uses a SYNC engine for migrations (psycopg2) even though the app
+uses async (asyncpg) at runtime.
 """
 
-import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
-from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy import create_engine, pool
 
 from app.core.config import settings
 from app.db.models import Base  # noqa: F401 — imports all models via __init__.py
@@ -16,8 +16,8 @@ from app.db.models import Base  # noqa: F401 — imports all models via __init__
 # Alembic Config object
 config = context.config
 
-# Override sqlalchemy.url from our settings (sync URL for Alembic)
-sync_url = settings.DATABASE_URL.replace("+asyncpg", "")
+# Use sync URL for Alembic (psycopg2, not asyncpg)
+sync_url = settings.DATABASE_URL_SYNC
 config.set_main_option("sqlalchemy.url", sync_url)
 
 # Interpret the config file for Python logging.
@@ -40,27 +40,17 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-async def run_async_migrations() -> None:
-    """Run migrations in 'online' mode with async engine."""
-    connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode with sync engine."""
+    connectable = create_engine(
+        sync_url,
         poolclass=pool.NullPool,
     )
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-    await connectable.dispose()
-
-
-def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-    asyncio.run(run_async_migrations())
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+    connectable.dispose()
 
 
 if context.is_offline_mode():

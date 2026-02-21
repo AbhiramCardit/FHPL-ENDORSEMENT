@@ -166,7 +166,56 @@ class PipelineEngine:
             duration_ms=result.total_duration_ms,
         )
 
+        # ── Persist to DB (non-fatal) ─────────────────
+        await self._persist_to_db(ctx, result)
+
         return result
+
+    async def _persist_to_db(
+        self,
+        ctx: PipelineContext,
+        result,
+    ) -> None:
+        """Persist pipeline execution to database. Failures are logged, never raised."""
+        try:
+            from app.pipeline.db_persist import persist_pipeline_result
+
+            # Build file dicts from context
+            file_dicts = []
+            for fi in ctx.files:
+                file_dicts.append({
+                    "file_id": fi.file_id,
+                    "filename": fi.filename,
+                    "role": fi.role,
+                    "detected_format": fi.detected_format,
+                    "s3_key": fi.s3_key,
+                    "local_path": fi.local_path,
+                    "record_count": fi.record_count,
+                    "error": fi.error,
+                })
+
+            await persist_pipeline_result(
+                execution_id=ctx.execution_id,
+                status=result.status,
+                insurer_code=ctx.insuree_config.get("code", "UNKNOWN"),
+                insurer_name=ctx.insuree_config.get("name", ""),
+                config_snapshot=ctx.insuree_config,
+                started_at=result.started_at,
+                completed_at=result.completed_at,
+                duration_ms=result.total_duration_ms,
+                total_steps=result.total_steps,
+                steps_completed=result.steps_completed,
+                error_message=result.error,
+                step_results=result.step_results,
+                files=file_dicts,
+                extracted_by_role=ctx.raw_extracted_by_role,
+                context_summary=ctx.to_summary_dict(),
+            )
+        except Exception as exc:
+            self.logger.warning(
+                "DB persistence failed (non-fatal)",
+                error=str(exc),
+            )
 
     async def run_steps(
         self,

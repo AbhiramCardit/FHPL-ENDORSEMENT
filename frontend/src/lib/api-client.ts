@@ -67,6 +67,19 @@ class ApiClient {
   getSlaReport() { return this.request('/reports/sla'); }
   getErrorReport() { return this.request('/reports/errors'); }
 
+  // ── Pipeline ───────────────────────────────
+  triggerPipeline() { return this.request<any>('/pipeline/trigger', { method: 'POST' }); }
+  getPipelineRuns(params?: { insurer_code?: string; status?: string; limit?: number; offset?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.insurer_code) qs.set('insurer_code', params.insurer_code);
+    if (params?.status) qs.set('status', params.status);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.offset) qs.set('offset', String(params.offset));
+    const query = qs.toString();
+    return this.request<any>(`/pipeline/runs${query ? '?' + query : ''}`);
+  }
+  getPipelineRun(id: string) { return this.request<any>(`/pipeline/runs/${id}`); }
+
   // ── Health ────────────────────────────────
   getHealth() { return this.request('/health'); }
 }
