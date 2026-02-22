@@ -1,25 +1,29 @@
 #!/bin/bash
 set -e
 
-# Function to run SQL file
-run_sql_file() {
-    local file=$1
-    echo "Running SQL file: $file"
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -f "$file"
-}
+# This script runs automatically on FIRST PostgreSQL container boot
+# (only when the data volume is empty / freshly created).
+#
+# Environment variables POSTGRES_USER, POSTGRES_PASSWORD, and POSTGRES_DB
+# are set by docker-compose via .env file. PostgreSQL's entrypoint already
+# creates the user and database from these vars BEFORE this script runs.
 
-# Create extensions if needed
+echo "=== Custom DB Initialisation ==="
+
+# Create required extensions
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
     CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 EOSQL
 
-# Run all migration files in order
-for migration in /docker-entrypoint-initdb.d/*.sql
-do
-    if [ -f "$migration" ]; then
-        run_sql_file "$migration"
-    fi
-done
+echo "=== Extensions created successfully ==="
 
-echo "Database initialization completed"
+# Run any .sql migration files if they exist in our custom location
+if ls /docker-entrypoint-initdb.d/*.sql 1> /dev/null 2>&1; then
+    for migration in /docker-entrypoint-initdb.d/*.sql; do
+        echo "Running SQL file: $migration"
+        psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -f "$migration"
+    done
+fi
+
+echo "=== Database initialisation completed ==="

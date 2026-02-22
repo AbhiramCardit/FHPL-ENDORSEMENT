@@ -107,9 +107,9 @@ class DockerManager:
     """Manages the full Docker Compose lifecycle for the endorsement platform."""
 
     VOLUME_NAMES = [
-        "fhpl-endorsement_postgres_data",
-        "fhpl-endorsement_redis_data",
-        "fhpl-endorsement_minio_data",
+        "endorsements_postgres_data",
+        "endorsements_redis_data",
+        "endorsements_minio_data",
     ]
 
     # Services that have health-checks we can probe over HTTP

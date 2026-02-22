@@ -1,35 +1,33 @@
 """
-User repository — all database operations for the `users` table.
+User repository containing all data-access operations for the users table.
 
-Follows the repository pattern:
-    - Pure data-access logic, no HTTP/business concerns
-    - Every function takes an AsyncSession explicitly
-    - Returns model instances or None
-    - Raises nothing beyond SQLAlchemy exceptions
+Repository rules:
+- Pure data-access logic only
+- Every function receives AsyncSession explicitly
+- Functions flush, but never commit
 """
+
+from __future__ import annotations
 
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
+from app.core.constants import UserRole
+from app.core.security import hash_password, verify_password
 from app.db.models.user import User
 
 
-# ─── Create ──────────────────────────────────────────────
 async def create_user(
     db: AsyncSession,
     *,
     email: str,
     password: str,
     full_name: str,
-    role: str = "VIEWER",
+    role: str = UserRole.VIEWER.value,
 ) -> User:
-    """
-    Create a new user with a hashed password.
-    Caller is responsible for committing the session.
-    """
+    """Create a new user with a hashed password."""
     user = User(
         email=email.lower().strip(),
         hashed_password=hash_password(password),
@@ -37,21 +35,42 @@ async def create_user(
         role=role.upper(),
     )
     db.add(user)
-    await db.flush()  # populates user.id without committing
+    await db.flush()
     return user
 
 
-# ─── Read ────────────────────────────────────────────────
 async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
-    """Fetch a single user by primary key."""
+    """Fetch a user by primary key."""
     return await db.get(User, user_id)
 
 
+async def get_active_user_by_id(db: AsyncSession, user_id: int) -> User | None:
+    """Fetch an active user by primary key."""
+    stmt = select(User).where(User.id == user_id, User.is_active.is_(True))
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
-    """Fetch a single user by email (case-insensitive)."""
+    """Fetch a user by email address (case-insensitive)."""
     stmt = select(User).where(User.email == email.lower().strip())
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def authenticate_user(
+    db: AsyncSession,
+    *,
+    email: str,
+    password: str,
+) -> User | None:
+    """Validate credentials and return active user on success."""
+    user = await get_user_by_email(db, email)
+    if user is None or not user.is_active:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    return user
 
 
 async def list_users(
@@ -62,10 +81,7 @@ async def list_users(
     offset: int = 0,
     limit: int = 50,
 ) -> list[User]:
-    """
-    List users with optional filters.
-    Returns at most `limit` rows starting from `offset`.
-    """
+    """List users with optional active/role filters."""
     stmt = select(User).order_by(User.created_at.desc())
     if is_active is not None:
         stmt = stmt.where(User.is_active == is_active)
@@ -76,29 +92,27 @@ async def list_users(
     return list(result.scalars().all())
 
 
-# ─── Update ──────────────────────────────────────────────
 async def update_user(
     db: AsyncSession,
     user_id: int,
-    **fields: dict,
+    **fields: object,
 ) -> User | None:
-    """
-    Update arbitrary fields on a user.
-    Accepted keys: full_name, email, role.
-    Returns the updated user or None if not found.
-    """
+    """Update mutable user fields and return updated user."""
     user = await get_user_by_id(db, user_id)
     if user is None:
         return None
 
     allowed = {"full_name", "email", "role"}
     for key, value in fields.items():
-        if key in allowed and value is not None:
-            if key == "email":
-                value = value.lower().strip()
-            if key == "role":
-                value = value.upper()
-            setattr(user, key, value)
+        if key not in allowed or value is None:
+            continue
+
+        if key == "email" and isinstance(value, str):
+            value = value.lower().strip()
+        if key == "role" and isinstance(value, str):
+            value = value.upper()
+
+        setattr(user, key, value)
 
     await db.flush()
     return user
@@ -109,7 +123,7 @@ async def update_password(
     user_id: int,
     new_password: str,
 ) -> bool:
-    """Change a user's password. Returns True if user existed."""
+    """Change a user's password. Returns True when user exists."""
     user = await get_user_by_id(db, user_id)
     if user is None:
         return False
@@ -123,7 +137,7 @@ async def set_active_status(
     user_id: int,
     is_active: bool,
 ) -> User | None:
-    """Activate or deactivate a user. Returns updated user or None."""
+    """Activate or deactivate a user and return updated row."""
     user = await get_user_by_id(db, user_id)
     if user is None:
         return None
@@ -133,22 +147,14 @@ async def set_active_status(
 
 
 async def record_login(db: AsyncSession, user_id: int) -> None:
-    """Stamp `last_login_at` on successful authentication."""
-    stmt = (
-        update(User)
-        .where(User.id == user_id)
-        .values(last_login_at=datetime.now(timezone.utc))
-    )
+    """Stamp last_login_at on successful authentication."""
+    stmt = update(User).where(User.id == user_id).values(last_login_at=datetime.now(timezone.utc))
     await db.execute(stmt)
     await db.flush()
 
 
-# ─── Delete ──────────────────────────────────────────────
 async def delete_user(db: AsyncSession, user_id: int) -> bool:
-    """
-    Hard-delete a user. Prefer `set_active_status(…, False)` for soft-delete.
-    Returns True if user existed and was deleted.
-    """
+    """Hard-delete a user. Returns True if a row was deleted."""
     user = await get_user_by_id(db, user_id)
     if user is None:
         return False

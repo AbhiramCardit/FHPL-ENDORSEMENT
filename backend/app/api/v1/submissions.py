@@ -1,16 +1,20 @@
-"""
-TPA submission management endpoints.
-"""
+"""TPA submission management endpoints."""
+
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db
 
-router = APIRouter(prefix="/submissions", tags=["Submissions"])
+router = APIRouter(
+    prefix="/submissions",
+    tags=["Submissions"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("/")
-async def list_submissions(db: AsyncSession = Depends(get_db)):
+async def list_submissions(db: AsyncSession = Depends(get_db)) -> dict[str, object]:
     """List submissions with TPA status."""
     return {"data": [], "message": "Not yet implemented"}

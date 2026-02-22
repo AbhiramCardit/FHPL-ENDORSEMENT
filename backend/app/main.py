@@ -1,21 +1,19 @@
-"""
-FastAPI application entry point.
-"""
+"""FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1 import auth, endorsements, files, insurees, pipeline, reports, review, submissions
 from app.core.config import settings
-from app.core.logging import setup_logging, get_logger
+from app.core.logging import get_logger, setup_logging
 from app.core.tracing import setup_tracing
-from app.api.v1 import insurees, files, endorsements, submissions, review, reports, pipeline
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup / shutdown events."""
+    """Startup and shutdown lifecycle hooks."""
     setup_logging("DEBUG" if settings.APP_ENV == "development" else "INFO")
     setup_tracing()
     logger = get_logger("startup")
@@ -31,7 +29,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ─── CORS ─────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Restrict in production
@@ -40,8 +37,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ─── Routes ───────────────────────────────────
 API_PREFIX = "/api/v1"
+app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(insurees.router, prefix=API_PREFIX)
 app.include_router(files.router, prefix=API_PREFIX)
 app.include_router(endorsements.router, prefix=API_PREFIX)
@@ -51,7 +48,7 @@ app.include_router(reports.router, prefix=API_PREFIX)
 app.include_router(pipeline.router, prefix=API_PREFIX)
 
 
-# ─── Health Check ─────────────────────────────
 @app.get("/health", tags=["Health"])
-async def health_check():
+async def health_check() -> dict[str, str]:
+    """Public health-check endpoint."""
     return {"status": "ok", "env": settings.APP_ENV}

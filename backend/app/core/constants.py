@@ -1,19 +1,19 @@
-"""
-Shared constants and enums — no magic strings.
-
-All status values, format types, endorsement types, and step names
-are defined here and imported throughout the application.
-"""
+"""Shared constants and enums used across the application."""
 
 from enum import StrEnum
 
 
-# ═══════════════════════════════════════════════════════════
-#  Pipeline Execution
-# ═══════════════════════════════════════════════════════════
+class UserRole(StrEnum):
+    """Application roles for authenticated dashboard users."""
+
+    ADMIN = "ADMIN"
+    OPERATOR = "OPERATOR"
+    VIEWER = "VIEWER"
+
 
 class PipelineStatus(StrEnum):
     """Overall status of a pipeline execution."""
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -23,6 +23,7 @@ class PipelineStatus(StrEnum):
 
 class StepStatus(StrEnum):
     """Status of an individual pipeline step."""
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -31,12 +32,9 @@ class StepStatus(StrEnum):
     RETRYING = "RETRYING"
 
 
-# ═══════════════════════════════════════════════════════════
-#  File Processing
-# ═══════════════════════════════════════════════════════════
-
 class FileFormat(StrEnum):
     """Detected file format types."""
+
     STRUCTURED_CSV = "STRUCTURED_CSV"
     STRUCTURED_XLSX = "STRUCTURED_XLSX"
     SEMI_STRUCTURED_PDF = "SEMI_STRUCTURED_PDF"
@@ -47,18 +45,16 @@ class FileFormat(StrEnum):
 
 class FileIngestionStatus(StrEnum):
     """Status of a file through the ingestion lifecycle."""
+
     DOWNLOADED = "DOWNLOADED"
     PROCESSING = "PROCESSING"
     PROCESSED = "PROCESSED"
     FAILED = "FAILED"
 
 
-# ═══════════════════════════════════════════════════════════
-#  Endorsement Records
-# ═══════════════════════════════════════════════════════════
-
 class EndorsementType(StrEnum):
     """Types of endorsement actions."""
+
     ADD_MEMBER = "ADD_MEMBER"
     REMOVE_MEMBER = "REMOVE_MEMBER"
     CHANGE_DETAILS = "CHANGE_DETAILS"
@@ -67,6 +63,7 @@ class EndorsementType(StrEnum):
 
 class ValidationStatus(StrEnum):
     """Validation result for an endorsement record."""
+
     PASSED = "PASSED"
     FAILED = "FAILED"
     WARNING = "WARNING"
@@ -74,6 +71,7 @@ class ValidationStatus(StrEnum):
 
 class ReviewStatus(StrEnum):
     """Human review status."""
+
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
@@ -81,6 +79,7 @@ class ReviewStatus(StrEnum):
 
 class SubmissionStatus(StrEnum):
     """TPA submission lifecycle status."""
+
     QUEUED = "QUEUED_FOR_SUBMISSION"
     IN_PROGRESS = "SUBMISSION_IN_PROGRESS"
     SUBMITTED = "SUBMITTED"
@@ -89,12 +88,9 @@ class SubmissionStatus(StrEnum):
     FAILED_FINAL = "SUBMISSION_FAILED_FINAL"
 
 
-# ═══════════════════════════════════════════════════════════
-#  API Request Types (for intermediate pipeline API calls)
-# ═══════════════════════════════════════════════════════════
-
 class APIRequestMethod(StrEnum):
     """HTTP methods used in pipeline API steps."""
+
     GET = "GET"
     POST = "POST"
     PUT = "PUT"

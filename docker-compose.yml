@@ -5,13 +5,17 @@ services:
       context: ./database
       dockerfile: Dockerfile
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - endorsements_postgres_data:/var/lib/postgresql/data
     env_file:
       - .env
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-endorsements_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-endorsements_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-endorsements_db}
     ports:
       - "5432:5432"
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-endorsements_user}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-endorsements_user} -d ${POSTGRES_DB:-endorsements_db}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -23,7 +27,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - endorsements_redis_data:/data
     env_file:
       - .env
     healthcheck:
@@ -39,7 +43,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio_data:/data
+      - endorsements_minio_data:/data
     environment:
       - MINIO_ROOT_USER=${STORAGE_ACCESS_KEY:-minioadmin}
       - MINIO_ROOT_PASSWORD=${STORAGE_SECRET_KEY:-minioadmin}
@@ -64,6 +68,9 @@ services:
     environment:
       - POSTGRES_SERVER=postgres
       - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-endorsements_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-endorsements_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-endorsements_db}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
@@ -89,6 +96,9 @@ services:
     environment:
       - POSTGRES_SERVER=postgres
       - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-endorsements_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-endorsements_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-endorsements_db}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
@@ -112,6 +122,9 @@ services:
     environment:
       - POSTGRES_SERVER=postgres
       - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-endorsements_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-endorsements_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-endorsements_db}
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
@@ -137,6 +150,9 @@ services:
       - backend
 
 volumes:
-  postgres_data:
-  redis_data:
-  minio_data:
+  endorsements_postgres_data:
+    external: true
+  endorsements_redis_data:
+    external: true
+  endorsements_minio_data:
+    external: true

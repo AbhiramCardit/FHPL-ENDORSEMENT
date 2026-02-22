@@ -1,13 +1,11 @@
 /**
- * Shared TypeScript types — only define types for models that actually exist.
- * Add new interfaces here as backend tables are created.
+ * Shared TypeScript types.
  */
 
-// ── User ────────────────────────────────────
 export type UserRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
 export interface User {
-  id: string;
+  id: number;
   email: string;
   full_name: string;
   role: UserRole;
@@ -30,7 +28,6 @@ export interface UpdateUserPayload {
   role?: UserRole;
 }
 
-// ── API Response Wrappers ───────────────────
 export interface ApiResponse<T> {
   data: T;
   message?: string;

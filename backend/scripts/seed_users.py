@@ -11,19 +11,19 @@ from app.repositories.users import create_user
 
 SEED_USERS = [
     {
-        "email": "admin@endorsements.local",
+        "email": "admin@superclaims.ai",
         "password": "admin123",  # Change in production!
         "full_name": "System Admin",
         "role": "ADMIN",
     },
     {
-        "email": "operator@endorsements.local",
+        "email": "operator@superclaims.ai",
         "password": "operator123",
         "full_name": "TPA Operator",
         "role": "OPERATOR",
     },
     {
-        "email": "viewer@endorsements.local",
+        "email": "viewer@superclaims.ai",
         "password": "viewer123",
         "full_name": "Dashboard Viewer",
         "role": "VIEWER",
