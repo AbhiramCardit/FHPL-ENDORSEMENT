@@ -6,7 +6,7 @@ Expected files per endorsement run:
     - endorsement_pdf (PDF): endorsement document for LLM extraction
 
 Flow:
-    Download → Detect → ABHI Extract (XLS + PDF LLM) → Map → Validate → Score → Persist
+    Download → ABHI Extract XLS → ABHI Extract PDF (LLM) → Map → Validate → Score → Persist
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from app.pipeline.steps.score_confidence import ScoreConfidenceStep
 from app.pipeline.steps.persist_records import PersistRecordsStep
 
 # ─── Import ABHI-specific steps ──────────────────
-from app.pipeline.insurers.abhi.steps import ABHIExtractDataStep
+from app.pipeline.insurers.abhi.steps import ABHIExtractXLSStep, ABHIExtractPDFStep
 
 
 # ═══════════════════════════════════════════════════════════
@@ -94,9 +94,11 @@ def abhi_flow() -> list[PipelineStep]:
     ABHI pipeline flow.
 
     Step 1: Download files
-    Step 2: ABHI Extract (XLS sheet extractor + PDF via Gemini LLM)
+    Step 2: Extract endorsement data from XLS/XLSX
+    Step 3: Extract endorsement data from PDF via Gemini LLM
     """
     return [
         DownloadFileStep(),
-        ABHIExtractDataStep(),
+        ABHIExtractXLSStep(),
+        ABHIExtractPDFStep(),
     ]

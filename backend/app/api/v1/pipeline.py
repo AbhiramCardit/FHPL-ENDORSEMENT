@@ -152,6 +152,7 @@ async def get_pipeline_run(run_id: UUID, db: AsyncSession = Depends(get_db)) -> 
                 "duration_ms": step.duration_ms,
                 "error_message": step.error_message,
                 "metadata": step.metadata_,
+                "output": step.output,
                 "retry_count": step.retry_count,
             }
             for step in sorted(run.step_logs, key=lambda item: item.step_index)

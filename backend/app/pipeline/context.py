@@ -66,31 +66,83 @@ class FileInfo:
 
 
 # ═══════════════════════════════════════════════════════════
+#  StepMetadata — standardised metrics every step reports
+# ═══════════════════════════════════════════════════════════
+
+@dataclass
+class StepMetadata:
+    """
+    Standard metadata that every step reports.
+
+    These fields are the SAME for all steps, enabling consistent
+    querying, comparison across runs, and dashboard aggregation.
+    """
+
+    files_processed: int = 0
+    records_processed: int = 0
+    extraction_method: str | None = None    # "xls_extractor", "llm", etc.
+    llm_model: str | None = None            # "gemini-2.5-flash-lite", etc.
+    retry_count: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise — omits None/zero values for clean storage."""
+        result: dict[str, Any] = {}
+        if self.files_processed:
+            result["files_processed"] = self.files_processed
+        if self.records_processed:
+            result["records_processed"] = self.records_processed
+        if self.extraction_method:
+            result["extraction_method"] = self.extraction_method
+        if self.llm_model:
+            result["llm_model"] = self.llm_model
+        if self.retry_count:
+            result["retry_count"] = self.retry_count
+        return result
+
+
+# ═══════════════════════════════════════════════════════════
 #  StepResult
 # ═══════════════════════════════════════════════════════════
 
 @dataclass
 class StepResult:
-    """Outcome of a single pipeline step execution."""
+    """
+    Outcome of a single pipeline step execution.
+
+    - metadata: Standardised StepMetadata (same structure for all steps)
+    - output:   Step-specific custom data (varies per step type)
+    """
 
     step_name: str
-    status: str                     # StepStatus value
+    step_description: str = ""
+    status: str = ""
+
+    # ── Timing ──
     started_at: datetime | None = None
     completed_at: datetime | None = None
     duration_ms: int = 0
+
+    # ── Error ──
     error: str | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
+
+    # ── Standard metadata (same keys for ALL steps) ──
+    metadata: StepMetadata = field(default_factory=StepMetadata)
+
+    # ── Step-specific output (varies per step) ──
+    output: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise for JSONB storage."""
         return {
             "step_name": self.step_name,
+            "step_description": self.step_description,
             "status": self.status,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "duration_ms": self.duration_ms,
             "error": self.error,
-            "metadata": self.metadata,
+            "metadata": self.metadata.to_dict() if isinstance(self.metadata, StepMetadata) else self.metadata,
+            "output": self.output,
         }
 
 
@@ -139,16 +191,27 @@ class PipelineContext:
     filename: str | None = None
     detected_format: str | None = None
 
-    # ─── Extraction (populated by extract steps) ──────
+    # ─── Extraction results ───────────────────────────
     #
     # raw_extracted_by_role:
-    #   Keyed by file role.  Each value is the list of raw dicts
-    #   extracted from that file.
+    #   Keyed by file role.  Each value is a list of CLEAN record
+    #   dicts — no internal tracking keys (no _source_file etc).
     #   Example:
     #     {
-    #       "member_data":        [{"name": "John", ...}, ...],
-    #       "endorsement_actions": [{"action": "ADD", ...}, ...],
-    #       "policy_details":     [{"plan_code": "P1", ...}, ...],
+    #       "endorsement_data":  [{"Sr.NO": 1, "Name": "John", ...}, ...],
+    #       "endorsement_pdf":   [{"name": "Jane", "action": "ADD", ...}, ...],
+    #     }
+    #
+    # extraction_metadata_by_role:
+    #   Full extraction output per role — includes wrapper info like
+    #   title, header, summary that is NOT part of the records.
+    #   Example:
+    #     {
+    #       "endorsement_data": {
+    #         "title": "Group Endorsement - ...",
+    #         "header": {"Policy Number": "...", ...},
+    #         "summary": {"Premium": 0, ...},
+    #       },
     #     }
     #
     # raw_extracted:
@@ -156,6 +219,7 @@ class PipelineContext:
     #   Kept for backward-compat with single-file flows.
 
     raw_extracted_by_role: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    extraction_metadata_by_role: dict[str, dict[str, Any]] = field(default_factory=dict)
     raw_extracted: list[dict[str, Any]] = field(default_factory=list)
     canonical_records: list[dict[str, Any]] = field(default_factory=list)
 

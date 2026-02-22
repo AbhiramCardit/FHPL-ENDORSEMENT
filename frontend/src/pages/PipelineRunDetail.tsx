@@ -14,6 +14,7 @@ interface StepLog {
   duration_ms: number | null;
   error_message: string | null;
   metadata: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
   retry_count: number;
 }
 
@@ -448,8 +449,9 @@ export default function PipelineRunDetail() {
                       </div>
                     )}
 
-                    <div className="mt-2">
+                    <div className="mt-2 space-y-1.5">
                       <JsonPanel label="Step metadata" data={step.metadata} />
+                      <JsonPanel label="Step output" data={step.output} defaultOpen />
                     </div>
                   </article>
                 );
@@ -523,8 +525,8 @@ export default function PipelineRunDetail() {
                       <span className="ml-auto text-[11px] text-gray-500">{formatTime(item.created_at)}</span>
                     </div>
                     <div className="mt-2 space-y-2">
-                      <JsonPanel label="Raw payload" data={item.raw_data} />
-                      <JsonPanel label="Processed output" data={item.data} />
+                      <JsonPanel label="Full extraction result" data={item.raw_data} defaultOpen />
+                      <JsonPanel label="Clean records" data={item.data} />
                     </div>
                   </article>
                 ))}

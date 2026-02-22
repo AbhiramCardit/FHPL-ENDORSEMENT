@@ -1,9 +1,9 @@
 """
 ABHI-specific pipeline steps.
 
-ABHIExtractDataStep handles two file roles:
-    - endorsement_data (XLS/XLSX) → proven XLS sheet extractor
-    - endorsement_pdf (PDF) → PDF sent directly to Gemini 2.5 Flash
+Two separate extraction steps for maximum transparency:
+    - ABHIExtractXLSStep: endorsement_data (XLS/XLSX) → proven XLS sheet extractor
+    - ABHIExtractPDFStep: endorsement_pdf (PDF) → PDF sent directly to Gemini 2.5 Flash
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from typing import Any
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.tracing import traceable_step
-from app.pipeline.context import FileInfo, PipelineContext, StepResult
+from app.pipeline.context import FileInfo, PipelineContext, StepMetadata, StepResult
 from app.pipeline.errors import ExtractionError, StepExecutionError
 from app.pipeline.step import PipelineStep
 from app.pipeline.insurers.abhi.extractors import extract_xls
@@ -23,88 +23,104 @@ from app.pipeline.insurers.abhi.prompts import ENDORSEMENT_PDF_PROMPT, SYSTEM_PR
 logger = get_logger(__name__)
 
 
-class ABHIExtractDataStep(PipelineStep):
-    """
-    ABHI extraction step.
+# ═══════════════════════════════════════════════════════════
+#  Step 1: XLS Extraction
+# ═══════════════════════════════════════════════════════════
 
-    Routes files by role:
-        - endorsement_data → extract_xls()
-        - endorsement_pdf  → Gemini 2.5 Flash (PDF sent directly)
+class ABHIExtractXLSStep(PipelineStep):
+    """
+    ABHI XLS extraction step.
+
+    Extracts endorsement data from XLS/XLSX files using the
+    proven sheet extractor. Operates on files with role 'endorsement_data'.
     """
 
-    name = "abhi_extract_data"
-    description = "Extract endorsement data from ABHI XLS and PDF files"
+    name = "abhi_extract_xls"
+    description = "Extract endorsement data from ABHI XLS/XLSX file"
     retryable = True
     max_retries = 2
+
+    async def should_skip(self, ctx: PipelineContext) -> bool:
+        """Skip if there is no endorsement_data file."""
+        fi = ctx.get_file_by_role("endorsement_data")
+        if fi is None:
+            logger.info("No endorsement_data file — skipping XLS extraction")
+            return True
+        if fi.error:
+            logger.info("endorsement_data file has error — skipping XLS extraction", error=fi.error)
+            return True
+        return False
 
     async def execute(self, ctx: PipelineContext) -> StepResult:
         started_at = self._now()
 
-        if not ctx.files:
+        fi = ctx.get_file_by_role("endorsement_data")
+        if fi is None or fi.error:
             raise StepExecutionError(
-                "No files to extract from",
+                "No valid endorsement_data file to extract from",
                 execution_id=ctx.execution_id,
                 step_name=self.name,
             )
 
-        per_file_results = []
+        try:
+            full_result = await self._extract_xls(fi, ctx)
+        except Exception as exc:
+            fi.error = str(exc)
+            ctx.add_error(f"ABHI XLS extraction failed for {fi.filename}: {exc}")
+            raise StepExecutionError(
+                f"XLS extraction failed: {exc}",
+                execution_id=ctx.execution_id,
+                step_name=self.name,
+            ) from exc
 
-        for fi in ctx.files:
-            if fi.error:
-                per_file_results.append({"role": fi.role, "status": "skipped"})
-                continue
+        records = full_result.get("records", [])
+        fi.record_count = len(records)
 
-            try:
-                if fi.role == "endorsement_data":
-                    records = await self._extract_xls(fi, ctx)
-                elif fi.role == "endorsement_pdf":
-                    records = await self._extract_pdf(fi, ctx)
-                else:
-                    per_file_results.append({"role": fi.role, "status": "skipped", "reason": "unknown_role"})
-                    continue
+        # Store CLEAN records (no internal tracking keys)
+        ctx.raw_extracted_by_role[fi.role] = records
 
-                fi.record_count = len(records)
-                ctx.raw_extracted_by_role[fi.role] = records
-                per_file_results.append({
-                    "role": fi.role, "filename": fi.filename,
-                    "records": len(records), "status": "ok",
-                })
-
-            except Exception as exc:
-                fi.error = str(exc)
-                ctx.add_error(f"ABHI extraction failed for {fi.filename}: {exc}")
-                per_file_results.append({
-                    "role": fi.role, "filename": fi.filename,
-                    "status": "failed", "error": str(exc),
-                })
+        # Store the full extraction metadata (title, header, summary)
+        ctx.extraction_metadata_by_role[fi.role] = {
+            "title": full_result.get("title"),
+            "header": full_result.get("header", {}),
+            "summary": full_result.get("summary", {}),
+            "extraction_method": "xls_extractor",
+        }
 
         ctx.merge_extracted_to_flat()
-        files_ok = sum(1 for r in per_file_results if r["status"] == "ok")
 
-        if files_ok == 0:
-            raise StepExecutionError(
-                "All ABHI file extractions failed",
-                execution_id=ctx.execution_id,
-                step_name=self.name,
-            )
+        return self._success(
+            started_at,
+            metadata=StepMetadata(
+                files_processed=1,
+                records_processed=len(records),
+                extraction_method="xls_extractor",
+            ),
+            output={
+                "filename": fi.filename,
+                "title": full_result.get("title"),
+                "header": full_result.get("header", {}),
+                "summary": full_result.get("summary", {}),
+                "records_count": len(records),
+            },
+        )
 
-        return self._success(started_at, metadata={
-            "total_files": len(ctx.files),
-            "files_extracted": files_ok,
-            "total_records": len(ctx.raw_extracted),
-            "by_role": {r: len(d) for r, d in ctx.raw_extracted_by_role.items()},
-            "per_file": per_file_results,
-        })
+    async def _extract_xls(self, fi: FileInfo, ctx: PipelineContext) -> dict[str, Any]:
+        """Extract from ABHI XLS/XLSX using the proven sheet extractor.
 
-    # ─── Step 1: XLS Extraction ───────────────────────
-
-    async def _extract_xls(self, fi: FileInfo, ctx: PipelineContext) -> list[dict[str, Any]]:
-        """Extract from ABHI XLS/XLSX using the proven sheet extractor."""
+        Returns the complete extraction result dict with keys:
+        title, header, records, summary.
+        """
         logger.info("ABHI XLS extraction", role=fi.role, filepath=fi.local_path)
 
         # Demo mode — no real file
         if not fi.local_path or fi.local_path.startswith("/tmp/pipeline/"):
-            return self._xls_demo_data(fi.filename)
+            return {
+                "title": "Demo Endorsement Sheet",
+                "header": {},
+                "records": self._xls_demo_data(fi.filename),
+                "summary": {},
+            }
 
         result = extract_xls(fi.local_path)
 
@@ -112,12 +128,103 @@ class ABHIExtractDataStep(PipelineStep):
         ctx.set_extra("abhi_xls_summary", result.get("summary", {}))
         ctx.set_extra("abhi_xls_title", result.get("title"))
 
-        records = result.get("records", [])
-        for r in records:
-            r["_source_file"] = fi.filename
-        return records
+        return result
 
-    # ─── Step 2: PDF → Gemini LLM (direct file upload) ─
+    @staticmethod
+    def _xls_demo_data(filename: str) -> list[dict[str, Any]]:
+        """Placeholder data for demo mode (no real file)."""
+        return [
+            {"name": "Rahul Sharma", "employee_id": "ABHI-EMP001", "action": "ADD",
+             "dob": "1990-05-15", "relationship": "Self", "gender": "Male",
+             "sum_insured": 500000, "plan": "GOLD"},
+            {"name": "Priya Sharma", "employee_id": "ABHI-EMP001", "action": "ADD",
+             "dob": "1992-08-20", "relationship": "Spouse", "gender": "Female",
+             "sum_insured": 500000, "plan": "GOLD"},
+            {"name": "Amit Patel", "employee_id": "ABHI-EMP002", "action": "DEL",
+             "dob": "1985-11-03", "relationship": "Self", "gender": "Male",
+             "sum_insured": 300000, "plan": "SILVER"},
+        ]
+
+
+# ═══════════════════════════════════════════════════════════
+#  Step 2: PDF → Gemini LLM Extraction
+# ═══════════════════════════════════════════════════════════
+
+class ABHIExtractPDFStep(PipelineStep):
+    """
+    ABHI PDF extraction step.
+
+    Sends the endorsement PDF directly to Gemini 2.5 Flash for
+    structured data extraction. Operates on files with role 'endorsement_pdf'.
+    """
+
+    name = "abhi_extract_pdf"
+    description = "Extract endorsement data from ABHI PDF via Gemini LLM"
+    retryable = True
+    max_retries = 2
+
+    async def should_skip(self, ctx: PipelineContext) -> bool:
+        """Skip if there is no endorsement_pdf file."""
+        fi = ctx.get_file_by_role("endorsement_pdf")
+        if fi is None:
+            logger.info("No endorsement_pdf file — skipping PDF extraction")
+            return True
+        if fi.error:
+            logger.info("endorsement_pdf file has error — skipping PDF extraction", error=fi.error)
+            return True
+        return False
+
+    async def execute(self, ctx: PipelineContext) -> StepResult:
+        started_at = self._now()
+
+        fi = ctx.get_file_by_role("endorsement_pdf")
+        if fi is None or fi.error:
+            raise StepExecutionError(
+                "No valid endorsement_pdf file to extract from",
+                execution_id=ctx.execution_id,
+                step_name=self.name,
+            )
+
+        try:
+            records = await self._extract_pdf(fi, ctx)
+        except Exception as exc:
+            fi.error = str(exc)
+            ctx.add_error(f"ABHI PDF extraction failed for {fi.filename}: {exc}")
+            raise StepExecutionError(
+                f"PDF extraction failed: {exc}",
+                execution_id=ctx.execution_id,
+                step_name=self.name,
+            ) from exc
+
+        fi.record_count = len(records)
+
+        # Store CLEAN records (no internal tracking keys)
+        ctx.raw_extracted_by_role[fi.role] = records
+
+        model = settings.GEMINI_MODEL
+
+        # Store extraction metadata for this role
+        ctx.extraction_metadata_by_role[fi.role] = {
+            "extraction_method": "llm",
+            "llm_model": model,
+        }
+
+        ctx.merge_extracted_to_flat()
+
+        return self._success(
+            started_at,
+            metadata=StepMetadata(
+                files_processed=1,
+                records_processed=len(records),
+                extraction_method="llm",
+                llm_model=model,
+            ),
+            output={
+                "filename": fi.filename,
+                "records_count": len(records),
+                "model": model,
+            },
+        )
 
     async def _extract_pdf(self, fi: FileInfo, ctx: PipelineContext) -> list[dict[str, Any]]:
         """Send the PDF directly to Gemini 2.5 Flash for extraction."""
@@ -156,8 +263,6 @@ class ABHIExtractDataStep(PipelineStep):
                 "sum_insured": 500000, "plan": "GOLD",
                 "effective_date": "2026-03-01",
                 "remarks": "New addition per endorsement letter",
-                "_source_file": filename,
-                "_extraction_method": "llm",
             }]
 
         # ── Upload PDF and call Gemini ────────────────
@@ -210,27 +315,5 @@ class ABHIExtractDataStep(PipelineStep):
         if isinstance(records, dict):
             records = [records]
 
-        for r in records:
-            r["_source_file"] = filename
-            r["_extraction_method"] = "llm"
-            r["_llm_model"] = model
-
         logger.info("ABHI PDF extraction complete", records=len(records), model=model)
         return records
-
-    # ─── Demo Data ────────────────────────────────────
-
-    @staticmethod
-    def _xls_demo_data(filename: str) -> list[dict[str, Any]]:
-        """Placeholder data for demo mode (no real file)."""
-        return [
-            {"name": "Rahul Sharma", "employee_id": "ABHI-EMP001", "action": "ADD",
-             "dob": "1990-05-15", "relationship": "Self", "gender": "Male",
-             "sum_insured": 500000, "plan": "GOLD", "_source_file": filename},
-            {"name": "Priya Sharma", "employee_id": "ABHI-EMP001", "action": "ADD",
-             "dob": "1992-08-20", "relationship": "Spouse", "gender": "Female",
-             "sum_insured": 500000, "plan": "GOLD", "_source_file": filename},
-            {"name": "Amit Patel", "employee_id": "ABHI-EMP002", "action": "DEL",
-             "dob": "1985-11-03", "relationship": "Self", "gender": "Male",
-             "sum_insured": 300000, "plan": "SILVER", "_source_file": filename},
-        ]

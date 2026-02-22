@@ -40,6 +40,7 @@ class PipelineStepLog(Base):
 
     # ── Step output / metadata ────────────────
     metadata_ = Column("metadata", JSONB, default=dict)
+    output = Column(JSONB, default=dict)       # Step-specific custom output data
 
     # ── Retry info ────────────────────────────
     retry_count = Column(Integer, default=0)

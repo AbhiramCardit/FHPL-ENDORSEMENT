@@ -15,7 +15,7 @@ from typing import Any
 
 from app.core.constants import StepStatus
 from app.core.logging import get_logger
-from app.pipeline.context import PipelineContext, StepResult
+from app.pipeline.context import PipelineContext, StepMetadata, StepResult
 from app.pipeline.errors import StepExecutionError
 
 logger = get_logger(__name__)
@@ -63,37 +63,65 @@ class PipelineStep(ABC):
     def _success(
         self,
         started_at: datetime,
-        metadata: dict[str, Any] | None = None,
+        metadata: StepMetadata | dict[str, Any] | None = None,
+        output: dict[str, Any] | None = None,
     ) -> StepResult:
-        """Build a successful StepResult with timing."""
+        """Build a successful StepResult with timing.
+
+        For backward compatibility, `metadata` can be a raw dict —
+        it will be treated as step output, and metadata defaults to StepMetadata().
+        """
         now = datetime.now(timezone.utc)
         duration_ms = int((now - started_at).total_seconds() * 1000)
+
+        # Backward compat: raw dict passed as metadata → treat as output
+        if isinstance(metadata, dict):
+            actual_metadata = StepMetadata()
+            actual_output = metadata  # legacy steps pass output as metadata
+        else:
+            actual_metadata = metadata or StepMetadata()
+            actual_output = output or {}
+
         return StepResult(
             step_name=self.name,
+            step_description=self.description,
             status=StepStatus.COMPLETED,
             started_at=started_at,
             completed_at=now,
             duration_ms=duration_ms,
-            metadata=metadata or {},
+            metadata=actual_metadata,
+            output=actual_output,
         )
 
     def _failure(
         self,
         started_at: datetime,
         error: str,
-        metadata: dict[str, Any] | None = None,
+        metadata: StepMetadata | dict[str, Any] | None = None,
+        output: dict[str, Any] | None = None,
     ) -> StepResult:
         """Build a failed StepResult with timing and error message."""
         now = datetime.now(timezone.utc)
         duration_ms = int((now - started_at).total_seconds() * 1000)
+
+        # Backward compat: raw dict passed as metadata → treat as output
+        if isinstance(metadata, dict):
+            actual_metadata = StepMetadata()
+            actual_output = metadata
+        else:
+            actual_metadata = metadata or StepMetadata()
+            actual_output = output or {}
+
         return StepResult(
             step_name=self.name,
+            step_description=self.description,
             status=StepStatus.FAILED,
             started_at=started_at,
             completed_at=now,
             duration_ms=duration_ms,
             error=error,
-            metadata=metadata or {},
+            metadata=actual_metadata,
+            output=actual_output,
         )
 
     def _now(self) -> datetime:

@@ -209,6 +209,7 @@ class PipelineEngine:
                 step_results=result.step_results,
                 files=file_dicts,
                 extracted_by_role=ctx.raw_extracted_by_role,
+                extraction_metadata_by_role=ctx.extraction_metadata_by_role,
                 context_summary=ctx.to_summary_dict(),
             )
         except Exception as exc:
@@ -255,6 +256,7 @@ class PipelineEngine:
                     step_log.info("Step skipped")
                     skip_result = StepResult(
                         step_name=step.name,
+                        step_description=step.description,
                         status=StepStatus.SKIPPED,
                         started_at=datetime.now(timezone.utc),
                         completed_at=datetime.now(timezone.utc),
@@ -337,17 +339,27 @@ class PipelineEngine:
         try:
             from app.pipeline.db_persist import persist_step_completed
 
+            from app.pipeline.context import StepMetadata
+
+            # Serialize metadata properly
+            meta_dict = (
+                step_result.metadata.to_dict()
+                if isinstance(step_result.metadata, StepMetadata)
+                else step_result.metadata
+            )
+
             await persist_step_completed(
                 run_id=ctx.execution_id,
                 step_index=step_number,
                 step_name=step_result.step_name,
-                step_description=getattr(step_result, "step_description", ""),
+                step_description=step_result.step_description,
                 status=step_result.status,
                 started_at=step_result.started_at,
                 completed_at=step_result.completed_at,
                 duration_ms=step_result.duration_ms,
                 error_message=step_result.error,
-                metadata=step_result.metadata,
+                metadata=meta_dict,
+                output=step_result.output,
                 retry_count=getattr(step_result, "retry_count", 0),
                 steps_completed=steps_completed,
                 total_steps=total_steps,
@@ -388,11 +400,12 @@ class PipelineEngine:
                 # Final failure
                 return StepResult(
                     step_name=step.name,
+                    step_description=step.description,
                     status=StepStatus.FAILED,
                     started_at=datetime.now(timezone.utc),
                     completed_at=datetime.now(timezone.utc),
                     error=str(exc),
-                    metadata={"attempts": attempt},
+                    output={"attempts": attempt},
                 )
 
             except Exception as exc:
@@ -400,11 +413,12 @@ class PipelineEngine:
                 log.exception("Unexpected error in step", error=str(exc))
                 return StepResult(
                     step_name=step.name,
+                    step_description=step.description,
                     status=StepStatus.FAILED,
                     started_at=datetime.now(timezone.utc),
                     completed_at=datetime.now(timezone.utc),
                     error=f"Unexpected: {exc}",
-                    metadata={"traceback": traceback.format_exc()},
+                    output={"traceback": traceback.format_exc()},
                 )
 
         # Should not reach here, but safety net

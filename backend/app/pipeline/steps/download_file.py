@@ -11,7 +11,7 @@ import os
 from typing import Any
 
 from app.core.logging import get_logger
-from app.pipeline.context import FileInfo, PipelineContext, StepResult
+from app.pipeline.context import FileInfo, PipelineContext, StepMetadata, StepResult
 from app.pipeline.errors import StorageError, StepExecutionError
 from app.pipeline.step import PipelineStep
 
@@ -86,15 +86,20 @@ class DownloadFileStep(PipelineStep):
                 is_batch=ctx.is_batch,
             )
 
-            return self._success(started_at, metadata={
-                "downloaded": downloaded,
-                "total_files": len(ctx.files),
-                "is_batch": ctx.is_batch,
-                "files": [
-                    {"role": f.role, "filename": f.filename, "ok": f.error is None}
-                    for f in ctx.files
-                ],
-            })
+            return self._success(
+                started_at,
+                metadata=StepMetadata(
+                    files_processed=downloaded,
+                ),
+                output={
+                    "total_files": len(ctx.files),
+                    "is_batch": ctx.is_batch,
+                    "files": [
+                        {"role": f.role, "filename": f.filename, "ok": f.error is None}
+                        for f in ctx.files
+                    ],
+                },
+            )
 
         except StepExecutionError:
             raise

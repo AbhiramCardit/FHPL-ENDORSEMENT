@@ -56,6 +56,7 @@ async def persist_step_completed(
     duration_ms: int,
     error_message: str | None = None,
     metadata: dict | None = None,
+    output: dict | None = None,
     retry_count: int = 0,
     steps_completed: int = 0,
     total_steps: int = 0,
@@ -84,6 +85,7 @@ async def persist_step_completed(
                     duration_ms=duration_ms,
                     error_message=error_message,
                     metadata_=metadata or {},
+                    output=output or {},
                     retry_count=retry_count,
                 )
                 session.add(step_log)
@@ -118,6 +120,23 @@ async def persist_step_completed(
             await engine.dispose()
 
 
+def _strip_internal_keys(records: list[dict]) -> list[dict]:
+    """
+    Strip underscore-prefixed internal tracking keys from records.
+
+    Keys like _source_file, _extraction_method, _llm_model, _source_role
+    are tracked via proper DB columns — they should NOT pollute the
+    clean record data.
+    """
+    cleaned = []
+    for record in records:
+        cleaned.append({
+            k: v for k, v in record.items()
+            if not k.startswith("_")
+        })
+    return cleaned
+
+
 async def persist_pipeline_result(
     execution_id: str,
     status: str,
@@ -133,6 +152,7 @@ async def persist_pipeline_result(
     step_results: list[dict[str, Any]],
     files: list | None = None,
     extracted_by_role: dict[str, list[dict]] | None = None,
+    extraction_metadata_by_role: dict[str, dict[str, Any]] | None = None,
     context_summary: dict[str, Any] | None = None,
 ) -> str | None:
     """
@@ -219,12 +239,34 @@ async def persist_pipeline_result(
 
                 # ── PipelineExtractedData ─────────────────
                 if extracted_by_role:
+                    extraction_meta = extraction_metadata_by_role or {}
+
                     for role, records in extracted_by_role.items():
                         if not records:
                             continue
-                        first = records[0] if records else {}
-                        method = first.get("_extraction_method", "xls_extractor")
-                        model = first.get("_llm_model")
+
+                        # Determine extraction method from extraction metadata
+                        # (no longer relying on _extraction_method in records)
+                        role_meta = extraction_meta.get(role, {})
+
+                        method = role_meta.get("extraction_method", "unknown")
+                        model = role_meta.get("llm_model")
+
+                        # Clean records: strip all underscore-prefixed internal keys
+                        clean_records = _strip_internal_keys(records)
+
+                        # Build raw_data: the full extraction output
+                        # For XLS: includes title, header, summary, records
+                        # For LLM: just the records (no wrapper metadata)
+                        if role_meta:
+                            # Has extraction metadata (XLS-style: title, header, summary)
+                            raw_data = {
+                                **role_meta,
+                                "records": clean_records,
+                            }
+                        else:
+                            # No wrapper metadata (LLM-style: just records)
+                            raw_data = clean_records
 
                         ed = PipelineExtractedData(
                             run_id=run_id,
@@ -232,7 +274,8 @@ async def persist_pipeline_result(
                             source_role=role,
                             extraction_method=method,
                             llm_model=model,
-                            data=records,
+                            raw_data=raw_data,
+                            data=clean_records,
                         )
                         session.add(ed)
 
