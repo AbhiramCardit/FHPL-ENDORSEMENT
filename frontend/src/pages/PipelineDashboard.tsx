@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   Activity,
   CheckCircle2,
-  CircleAlert,
   Clock3,
   Play,
   RefreshCw,
   Timer,
   XCircle,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import apiClient from '../lib/api-client';
 
 interface PipelineRunSummary {
@@ -35,11 +35,6 @@ interface TriggerPipelineResponse {
   run_id?: string;
   celery_task_id?: string;
   status?: string;
-}
-
-interface TriggerBanner {
-  type: 'success' | 'error';
-  message: string;
 }
 
 const ACTIVE_RUN_STATUSES = new Set(['PENDING', 'RUNNING']);
@@ -117,7 +112,6 @@ export default function PipelineDashboard() {
   const [runs, setRuns] = useState<PipelineRunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
-  const [banner, setBanner] = useState<TriggerBanner | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
 
   const fetchRuns = useCallback(async () => {
@@ -127,7 +121,7 @@ export default function PipelineDashboard() {
       setLastRefreshAt(new Date().toISOString());
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to fetch pipeline runs';
-      setBanner({ type: 'error', message: `Unable to refresh runs: ${message}` });
+      toast.error(`Unable to refresh runs: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -146,23 +140,23 @@ export default function PipelineDashboard() {
 
   const handleTrigger = useCallback(async () => {
     setTriggering(true);
-    setBanner(null);
     try {
       const response = (await apiClient.triggerPipeline()) as TriggerPipelineResponse;
       const runId = response.run_id;
       const baseMessage = response.message || 'Pipeline queued';
       const message = runId ? `${baseMessage}. Run ID: ${runId}` : baseMessage;
-      setBanner({ type: 'success', message });
+      toast.success(message);
       window.setTimeout(() => {
         void fetchRuns();
       }, 1500);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to trigger pipeline';
-      setBanner({ type: 'error', message: `Trigger failed: ${message}` });
+      toast.error(`Trigger failed: ${message}`);
     } finally {
       setTriggering(false);
     }
   }, [fetchRuns]);
+
 
   const stats = useMemo(() => {
     const runsWithDuration = runs.filter((run) => run.duration_ms != null);
@@ -263,21 +257,6 @@ export default function PipelineDashboard() {
           <span>{lastRefreshAt ? `Last updated: ${formatTime(lastRefreshAt)}` : 'Last updated: --'}</span>
         </div>
       </section>
-
-      {banner && (
-        <section
-          className={`rounded-lg border px-3 py-2.5 text-xs font-medium shadow-sm ${
-            banner.type === 'error'
-              ? 'border-red-200 bg-red-50 text-red-700'
-              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-          }`}
-        >
-          <div className="flex items-start gap-2">
-            {banner.type === 'error' ? <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
-            <p>{banner.message}</p>
-          </div>
-        </section>
-      )}
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/70 px-4 py-3">

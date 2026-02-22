@@ -537,16 +537,16 @@ export default function PipelineRunDetail() {
           <SectionCard title="Run Metadata" subtitle="Execution timestamps and audit identifiers">
             <dl className="space-y-2 text-xs">
               <div className="grid grid-cols-[120px_1fr] gap-2">
+                <dt className="font-semibold text-gray-500">Created</dt>
+                <dd className="text-gray-800">{formatTime(run.created_at ?? null)}</dd>
+              </div>
+              <div className="grid grid-cols-[120px_1fr] gap-2">
                 <dt className="font-semibold text-gray-500">Started</dt>
                 <dd className="text-gray-800">{formatTime(run.started_at)}</dd>
               </div>
               <div className="grid grid-cols-[120px_1fr] gap-2">
                 <dt className="font-semibold text-gray-500">Completed</dt>
                 <dd className="text-gray-800">{formatTime(run.completed_at)}</dd>
-              </div>
-              <div className="grid grid-cols-[120px_1fr] gap-2">
-                <dt className="font-semibold text-gray-500">Created</dt>
-                <dd className="text-gray-800">{formatTime(run.created_at ?? null)}</dd>
               </div>
               <div className="grid grid-cols-[120px_1fr] gap-2">
                 <dt className="font-semibold text-gray-500">Updated</dt>
