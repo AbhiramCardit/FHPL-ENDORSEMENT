@@ -203,7 +203,7 @@ function JsonPanel({
         <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <pre className="max-h-72 overflow-auto border-t border-gray-100 bg-gray-50/40 p-3 text-[11px] leading-relaxed text-gray-700">
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-gray-100 bg-gray-50/40 p-3 text-[11px] leading-relaxed text-gray-700">
           {safeJsonStringify(data)}
         </pre>
       )}
@@ -392,8 +392,8 @@ export default function PipelineRunDetail() {
         )}
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
-        <div className="space-y-4">
+      <div className="grid gap-4 items-start xl:grid-cols-[1.7fr_1fr]">
+        <div className="space-y-4 min-w-0">
           <SectionCard
             title="Execution Steps"
             subtitle={`${sortedSteps.length} steps with timing, retry, and error diagnostics`}
@@ -535,7 +535,7 @@ export default function PipelineRunDetail() {
           )}
         </div>
 
-        <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+        <aside className="space-y-4 min-w-0 xl:sticky xl:top-4 xl:self-start">
           <SectionCard title="Run Metadata" subtitle="Execution timestamps and audit identifiers">
             <dl className="space-y-2 text-xs">
               <div className="grid grid-cols-[120px_1fr] gap-2">

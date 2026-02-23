@@ -226,8 +226,11 @@ class ApiClient {
     return this.request<unknown>('/reports/errors');
   }
 
-  triggerPipeline() {
-    return this.request<unknown>('/pipeline/trigger', { method: 'POST' });
+  triggerPipeline(insurerCode?: string) {
+    return this.request<unknown>('/pipeline/trigger', {
+      method: 'POST',
+      body: JSON.stringify({ insurer_code: insurerCode || 'ABHI' }),
+    });
   }
 
   getPipelineRuns(params?: { insurer_code?: string; status?: string; limit?: number; offset?: number }) {

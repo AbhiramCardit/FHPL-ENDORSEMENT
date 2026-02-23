@@ -38,6 +38,7 @@ from app.pipeline.steps.api_request import APIRequestStep
 
 # ─── Import insurer-specific flows ────────────────────
 from app.pipeline.insurers.abhi.flow import abhi_flow
+from app.pipeline.insurers.bajaj.flow import bajaj_flow
 
 logger = get_logger(__name__)
 
@@ -179,6 +180,7 @@ FLOW_REGISTRY: dict[str, callable] = {
     "INSURER_B": _example_insurer_b_flow,
     # ─── Real insurers ────────────────────────────
     "ABHI": abhi_flow,
+    "BAJAJ": bajaj_flow,
 }
 
 

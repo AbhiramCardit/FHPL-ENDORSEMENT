@@ -10,6 +10,15 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import apiClient from '../lib/api-client';
 
 interface PipelineRunSummary {
@@ -112,6 +121,8 @@ export default function PipelineDashboard() {
   const [runs, setRuns] = useState<PipelineRunSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedInsurer, setSelectedInsurer] = useState('ABHI');
   const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null);
 
   const fetchRuns = useCallback(async () => {
@@ -141,11 +152,12 @@ export default function PipelineDashboard() {
   const handleTrigger = useCallback(async () => {
     setTriggering(true);
     try {
-      const response = (await apiClient.triggerPipeline()) as TriggerPipelineResponse;
+      const response = (await apiClient.triggerPipeline(selectedInsurer)) as TriggerPipelineResponse;
       const runId = response.run_id;
       const baseMessage = response.message || 'Pipeline queued';
-      const message = runId ? `${baseMessage}. Run ID: ${runId}` : baseMessage;
+      const message = runId ? `${baseMessage}. Run ID: ${runId} (${selectedInsurer})` : baseMessage;
       toast.success(message);
+      setDialogOpen(false);
       window.setTimeout(() => {
         void fetchRuns();
       }, 1500);
@@ -155,7 +167,7 @@ export default function PipelineDashboard() {
     } finally {
       setTriggering(false);
     }
-  }, [fetchRuns]);
+  }, [fetchRuns, selectedInsurer]);
 
 
   const stats = useMemo(() => {
@@ -204,15 +216,52 @@ export default function PipelineDashboard() {
               <RefreshCw className="h-3.5 w-3.5" />
               Refresh
             </button>
-            <button
-              type="button"
-              onClick={() => void handleTrigger()}
-              disabled={triggering}
-              className="inline-flex items-center gap-1 rounded-md bg-[#0a2540] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#143a61] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {triggering ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-              {triggering ? 'Triggering...' : 'Trigger Pipeline'}
-            </button>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md bg-[#0a2540] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#143a61]"
+                >
+                  <Play className="h-3.5 w-3.5" />
+                  Trigger Pipeline
+                </button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>Trigger Execution Details</DialogTitle>
+                  <DialogDescription>
+                    Select the target pipeline to be triggered using local test files.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <label htmlFor="insurer" className="text-right text-sm font-semibold">
+                      Insurer
+                    </label>
+                    <select
+                      id="insurer"
+                      value={selectedInsurer}
+                      onChange={(e) => setSelectedInsurer(e.target.value)}
+                      className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="ABHI">ABHI (Aditya Birla Health Insurance)</option>
+                      <option value="BAJAJ">BAJAJ (Bajaj Allianz General Insurance)</option>
+                    </select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <button
+                    type="button"
+                    onClick={() => void handleTrigger()}
+                    disabled={triggering}
+                    className="inline-flex items-center gap-2 rounded-md bg-[#0a2540] px-4 py-2 text-sm font-semibold text-white hover:bg-[#143a61] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {triggering ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                    {triggering ? 'Triggering...' : 'Trigger'}
+                  </button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 

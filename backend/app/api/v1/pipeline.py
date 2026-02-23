@@ -22,16 +22,72 @@ router = APIRouter(
 
 
 @router.post("/trigger")
-async def trigger_pipeline(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
-    """Trigger the ABHI pipeline and return an immediately-visible run id."""
+async def trigger_pipeline(
+    body: dict | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Trigger a pipeline for the given insurer and return an immediately-visible run id."""
+    from pydantic import BaseModel
+
     from app.pipeline.insurers.abhi import ABHI_CONFIG
+    from app.pipeline.insurers.bajaj import BAJAJ_CONFIG
     from app.tasks.processing_tasks import process_file
 
     test_dir = "/app/test_files"
 
+    # ── Resolve insurer config and test files ────────────────
+    insurer_code = (body or {}).get("insurer_code", "ABHI").upper()
+
+    INSURER_REGISTRY: dict[str, dict] = {
+        "ABHI": {
+            "config": ABHI_CONFIG,
+            "files": [
+                {
+                    "file_id": "abhi-f1",
+                    "filename": "Annexure.xls",
+                    "role": "endorsement_data",
+                    "s3_key": f"{test_dir}/Annexure.xls",
+                },
+                {
+                    "file_id": "abhi-f2",
+                    "filename": "Schedule.pdf",
+                    "role": "endorsement_pdf",
+                    "s3_key": f"{test_dir}/Schedule.pdf",
+                },
+            ],
+        },
+        "BAJAJ": {
+            "config": BAJAJ_CONFIG,
+            "files": [
+                {
+                    "file_id": "bajaj-f1",
+                    "filename": "OG-26-1801-8403-00000204-ER08.xlsx",
+                    "role": "endorsement_data",
+                    "s3_key": f"{test_dir}/bajaj/OG-26-1801-8403-00000204-ER08.xlsx",
+                },
+                {
+                    "file_id": "bajaj-f2",
+                    "filename": "OG-26-1801-8403-00000204-ER08.pdf",
+                    "role": "endorsement_pdf",
+                    "s3_key": f"{test_dir}/bajaj/OG-26-1801-8403-00000204-ER08.pdf",
+                },
+            ],
+        },
+    }
+
+    entry = INSURER_REGISTRY.get(insurer_code)
+    if entry is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown insurer_code: {insurer_code}. Available: {list(INSURER_REGISTRY.keys())}",
+        )
+
+    config = entry["config"]
+    files = entry["files"]
+
     run = PipelineRun(
-        insurer_code=ABHI_CONFIG.get("code", "ABHI"),
-        insurer_name=ABHI_CONFIG.get("name", "Aditya Birla Health Insurance"),
+        insurer_code=config.get("code", insurer_code),
+        insurer_name=config.get("name", insurer_code),
         status="PENDING",
         started_at=datetime.now(timezone.utc),
     )
@@ -41,22 +97,9 @@ async def trigger_pipeline(db: AsyncSession = Depends(get_db)) -> dict[str, str]
 
     task = process_file.delay(
         file_ingestion_id=run_id,
-        insuree_id="abhi-insuree-001",
-        insuree_config=ABHI_CONFIG,
-        files=[
-            {
-                "file_id": "abhi-f1",
-                "filename": "Annexure.xls",
-                "role": "endorsement_data",
-                "s3_key": f"{test_dir}/Annexure.xls",
-            },
-            {
-                "file_id": "abhi-f2",
-                "filename": "Schedule.pdf",
-                "role": "endorsement_pdf",
-                "s3_key": f"{test_dir}/Schedule.pdf",
-            },
-        ],
+        insuree_id=f"{insurer_code.lower()}-insuree-001",
+        insuree_config=config,
+        files=files,
     )
 
     return {
@@ -64,7 +107,9 @@ async def trigger_pipeline(db: AsyncSession = Depends(get_db)) -> dict[str, str]
         "run_id": run_id,
         "celery_task_id": task.id,
         "status": "PENDING",
+        "insurer_code": insurer_code,
     }
+
 
 
 @router.get("/runs")

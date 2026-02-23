@@ -3,6 +3,10 @@ Celery application factory.
 """
 
 from celery import Celery
+from app.core.tracing import setup_tracing
+
+# Initialize tracing for Celery workers
+setup_tracing()
 
 celery_app = Celery("endorsements")
 celery_app.config_from_object("celeryconfig")
